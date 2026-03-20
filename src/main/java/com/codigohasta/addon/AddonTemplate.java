@@ -97,6 +97,7 @@ public class AddonTemplate extends MeteorAddon {
         modules.add(new SchematicPro());
         
          modules.add(new MacroAnchor()); 
+         modules.add(new ElytraFly());
 
         // Commands
         Commands.add(new CommandExample());
