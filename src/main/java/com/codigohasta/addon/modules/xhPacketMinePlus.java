@@ -101,7 +101,7 @@ public class xhPacketMinePlus extends Module {
     private int serverSideSlot = -1;
 
     public xhPacketMinePlus() {
-        super(AddonTemplate.CATEGORY, "packet-mine", "抄袭的bep的发包挖掘模块，没有用了");
+        super(AddonTemplate.CATEGORY, "发包挖掘", "抄袭的bep的发包挖掘模块，没有用了");
     }
 
     @Override

@@ -133,7 +133,7 @@ public class AdaPacketMine extends Module {
     private Field cachedSlotField = null;
 
     public AdaPacketMine() {
-        super(AddonTemplate.CATEGORY, "ada-packet-mine", "抄的bep的包挖，ai抄过来效果不好");
+        super(AddonTemplate.CATEGORY, "发包挖掘2", "抄的bep的包挖，ai抄过来效果不好");
     }
 
     @Override
