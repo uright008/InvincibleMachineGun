@@ -76,7 +76,7 @@ public class Follower extends Module {
     private final Setting<Double> range = this.sgGeneral.add(new DoubleSetting.Builder().name("检测范围").defaultValue(50.0).range(0.0, 192.0).build());
     private final Setting<Boolean> dynamic = this.sgGeneral.add(new BoolSetting.Builder().name("动态索敌").defaultValue(true).build());
     private final Setting<Boolean> onlyAir = this.sgGeneral.add(new BoolSetting.Builder().name("仅限空中").defaultValue(true).build());
-    private final Setting<Boolean> preventGround = this.sgGeneral.add(new BoolSetting.Builder().name("防落地").defaultValue(true).build());
+    private final Setting<Boolean> preventGround = this.sgGeneral.add(new BoolSetting.Builder().name("不追落地者").defaultValue(true).build());
     
     // --- 渲染设置 ---
     private final Setting<Boolean> render = this.sgRender.add(new BoolSetting.Builder().name("渲染").defaultValue(true).build());
@@ -109,36 +109,60 @@ public class Follower extends Module {
 
     // --- 索敌 ---
     private void findTarget() {
-        TargetUtils.getList(this.targets, e -> {
-            if (e == mc.player || !e.isAlive() || !(e instanceof LivingEntity)) return false;
+        this.targets.clear();
+        Entity bestTarget = null;
+        double closestDiff = Double.MAX_VALUE;
 
-            // 1. 实体类型检查
-            if (!entities.get().contains(e.getType())) return false;
+      
+        for (Entity entity : mc.world.getEntities()) {
+         
+            if (entity == mc.player || !entity.isAlive() || !(entity instanceof LivingEntity)) continue;
 
-            // 2. 玩家特有检查
-            if (e instanceof PlayerEntity p) {
-                // 好友检查 
-                if (!Friends.get().shouldAttack(p)) return false;
+         
+            double dist = mc.player.distanceTo(entity);
+            if (dist > range.get()) continue;
 
-                // 游戏模式检查 
-                GameMode gm = getGameMode(p);
-                if (gm == GameMode.SURVIVAL && !attackSurvival.get()) return false;
-                if (gm == GameMode.CREATIVE && !attackCreative.get()) return false;
-                if (gm == GameMode.ADVENTURE && !attackAdventure.get()) return false;
-                if (gm == GameMode.SPECTATOR) return false; // 永远不击旁观者
+            
+            if (!entities.get().contains(entity.getType())) continue;
+
+            
+            if (entity instanceof PlayerEntity player) {
+               
+                if (!Friends.get().shouldAttack(player)) continue;
+
+                
+                GameMode gm = getGameMode(player);
+                
+               
+                if (gm == GameMode.CREATIVE && !attackCreative.get()) continue;
+                if (gm == GameMode.SURVIVAL && !attackSurvival.get()) continue;
+                if (gm == GameMode.ADVENTURE && !attackAdventure.get()) continue;
+                if (gm == GameMode.SPECTATOR) continue; 
             }
 
-            // 3. 距离检查
-            return this.mc.player.distanceTo(e) <= this.range.get();
-        }, this.priority.get(), 1);
+            
+            if (dist < closestDiff) {
+                closestDiff = dist;
+                bestTarget = entity;
+            }
+        }
+
+        if (bestTarget != null) {
+            this.targets.add(bestTarget);
+        }
     }
 
-    // 获取远程玩家模式的
+    
     private GameMode getGameMode(PlayerEntity p) {
         if (mc.getNetworkHandler() == null) return GameMode.DEFAULT;
+        
+        
         PlayerListEntry entry = mc.getNetworkHandler().getPlayerListEntry(p.getUuid());
         if (entry == null) return GameMode.DEFAULT;
-        return entry.getGameMode();
+        
+        GameMode gm = entry.getGameMode();
+      
+        return (gm != null) ? gm : GameMode.DEFAULT;
     }
 
     @EventHandler
