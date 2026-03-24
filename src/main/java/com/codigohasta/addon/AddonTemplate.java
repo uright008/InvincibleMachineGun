@@ -99,6 +99,8 @@ public class AddonTemplate extends MeteorAddon {
          modules.add(new MacroAnchor()); 
          modules.add(new ElytraFly());
          modules.add(new Follower());
+         modules.add(new Testfly());
+         modules.add(new ArrowDmg());
          
 
         // Commands

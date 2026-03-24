@@ -9,7 +9,9 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
+import net.minecraft.item.BowItem;
 import net.minecraft.item.CrossbowItem;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.Hand;
@@ -19,7 +21,7 @@ public class FastCrossbow extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     public enum Mode {
-        Native,  // AutoChorus同款逻辑，最稳
+        Native,  // 模拟按键，最稳
         Control, // 计算时间，极速
         Packet   // 暴力发包，激进
     }
@@ -53,7 +55,8 @@ public class FastCrossbow extends Module {
     private int timer = 0;
 
     public FastCrossbow() {
-        super(AddonTemplate.CATEGORY, "FastCrossbow", "快速射击机关弩，无情的机关枪。");
+        // 更新了描述，使其匹配当前功能
+        super(AddonTemplate.CATEGORY, "FastCrossbow", "快速射击弓与弩，无情的机关枪。");
     }
 
     @Override
@@ -71,8 +74,17 @@ public class FastCrossbow extends Module {
     private void onTick(TickEvent.Pre event) {
         if (mc.player == null || mc.world == null) return;
 
-        ItemStack handStack = mc.player.getMainHandStack();
-        if (!(handStack.getItem() instanceof CrossbowItem)) return;
+        // [新增逻辑] 1. 优先检查主手，如果主手不是武器，则检查副手
+        Hand hand = Hand.MAIN_HAND;
+        ItemStack stack = mc.player.getMainHandStack();
+        
+        if (!isWeapon(stack.getItem())) {
+            stack = mc.player.getOffHandStack();
+            hand = Hand.OFF_HAND;
+        }
+        
+        // 如果主副手都不是弓或弩，直接返回
+        if (!isWeapon(stack.getItem())) return;
 
         // 必须按住右键才工作
         if (!mc.options.useKey.isPressed()) {
@@ -82,93 +94,150 @@ public class FastCrossbow extends Module {
         // 处理冷却
         if (timer > 0) {
             timer--;
-            // 冷却期间松开按键，让状态同步
             mc.options.useKey.setPressed(false);
             return;
         }
 
-        // 根据模式分发逻辑
-        switch (mode.get()) {
-            case Native -> handleNativeMode(handStack);
-            case Control -> handleControlMode(handStack);
-            case Packet -> handlePacketMode(handStack);
-        }
-    }
+        // [新增逻辑] 2. 区分是弩还是弓，分发到不同的处理链路
+        boolean isCrossbow = stack.getItem() instanceof CrossbowItem;
 
-    // --- 模式 1: Native (AutoChorus同款) ---
-    // 最稳，最流畅，利用客户端原生逻辑
-    private void handleNativeMode(ItemStack stack) {
-        if (CrossbowItem.isCharged(stack)) {
-            // 满了 -> 发射
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            mc.player.swingHand(Hand.MAIN_HAND);
-            timer = delay.get();
+        if (isCrossbow) {
+            switch (mode.get()) {
+                case Native -> handleCrossbowNative(stack, hand);
+                case Control -> handleCrossbowControl(stack, hand);
+                case Packet -> handleCrossbowPacket(stack, hand);
+            }
         } else {
-            // 没满 -> 按死右键
-            mc.options.useKey.setPressed(true);
-            
-            // 确保拉弓动作开始
-            if (!mc.player.isUsingItem()) {
-                mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            // 如果不是弩，必定是弓 (BowItem)
+            switch (mode.get()) {
+                case Native -> handleBowNative(stack, hand);
+                case Control -> handleBowControl(stack, hand);
+                case Packet -> handleBowPacket(stack, hand);
             }
         }
     }
 
-    // --- 模式 2: Control (计算时间) ---
-    // 理论上比原生更快，因为是时间一到强制发包松手
-    private void handleControlMode(ItemStack stack) {
+    // --- 武器判断工具方法 ---
+    private boolean isWeapon(Item item) {
+        return item instanceof CrossbowItem || item instanceof BowItem;
+    }
+
+    // ================= 弩的处理逻辑 (Crossbow) =================
+
+    private void handleCrossbowNative(ItemStack stack, Hand hand) {
         if (CrossbowItem.isCharged(stack)) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            mc.player.swingHand(Hand.MAIN_HAND);
+            mc.interactionManager.interactItem(mc.player, hand);
+            mc.player.swingHand(hand);
+            timer = delay.get();
+        } else {
+            mc.options.useKey.setPressed(true);
+            if (!mc.player.isUsingItem()) {
+                mc.interactionManager.interactItem(mc.player, hand);
+            }
+        }
+    }
+
+    private void handleCrossbowControl(ItemStack stack, Hand hand) {
+        if (CrossbowItem.isCharged(stack)) {
+            mc.interactionManager.interactItem(mc.player, hand);
+            mc.player.swingHand(hand);
             timer = delay.get();
             return;
         }
 
         mc.options.useKey.setPressed(true);
         if (!mc.player.isUsingItem()) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            mc.interactionManager.interactItem(mc.player, hand);
             return;
         }
 
         int requiredTime = getPullTime(stack) + tolerance.get();
         if (mc.player.getItemUseTime() >= requiredTime) {
             mc.interactionManager.stopUsingItem(mc.player);
-            // 这里不设timer，让下一tick直接判断发射
         }
     }
 
-    // --- 模式 3: Packet (暴力发包) ---
-    // 激进，尝试更快的响应
-    private void handlePacketMode(ItemStack stack) {
+    private void handleCrossbowPacket(ItemStack stack, Hand hand) {
         if (CrossbowItem.isCharged(stack)) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            mc.player.swingHand(Hand.MAIN_HAND);
+            mc.interactionManager.interactItem(mc.player, hand);
+            mc.player.swingHand(hand);
             timer = delay.get();
-        } // 移除 return，尝试同一tick触发装填
+        } 
 
         if (!mc.player.isUsingItem()) {
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            mc.interactionManager.interactItem(mc.player, hand);
             mc.options.useKey.setPressed(true);
             return;
         }
 
         mc.options.useKey.setPressed(true);
-        
         int requiredTime = getPullTime(stack) + tolerance.get();
         if (mc.player.getItemUseTime() >= requiredTime) {
             mc.interactionManager.stopUsingItem(mc.player);
         }
     }
 
-    // 计算装填时间 (1.21.4 适配)
+    // ================= 弓的处理逻辑 (Bow) =================
+    // 弓的特点：拉弓满后，松开右键即触发发射！没有 charged 状态
+
+    private void handleBowNative(ItemStack stack, Hand hand) {
+        mc.options.useKey.setPressed(true);
+        if (!mc.player.isUsingItem()) {
+            mc.interactionManager.interactItem(mc.player, hand);
+        } else {
+            // Native 模式下我们使用基础时间，不加 tolerance
+            if (mc.player.getItemUseTime() >= getPullTime(stack)) {
+                mc.interactionManager.stopUsingItem(mc.player);
+                mc.options.useKey.setPressed(false);
+                timer = delay.get(); // 触发射击，进入冷却
+            }
+        }
+    }
+
+    private void handleBowControl(ItemStack stack, Hand hand) {
+        if (!mc.player.isUsingItem()) {
+            mc.interactionManager.interactItem(mc.player, hand);
+            mc.options.useKey.setPressed(true);
+        } else {
+            int requiredTime = getPullTime(stack) + tolerance.get();
+            if (mc.player.getItemUseTime() >= requiredTime) {
+                mc.interactionManager.stopUsingItem(mc.player);
+                timer = delay.get(); // 触发射击，进入冷却
+            }
+        }
+    }
+
+    private void handleBowPacket(ItemStack stack, Hand hand) {
+        // 弓的 Packet 逻辑与 Control 类似，但是尝试更快地响应
+        if (!mc.player.isUsingItem()) {
+            mc.interactionManager.interactItem(mc.player, hand);
+            mc.options.useKey.setPressed(true);
+        } 
+        
+        int requiredTime = getPullTime(stack) + tolerance.get();
+        if (mc.player.isUsingItem() && mc.player.getItemUseTime() >= requiredTime) {
+            mc.interactionManager.stopUsingItem(mc.player);
+            timer = delay.get();
+        }
+    }
+
+    // ================= 通用工具方法 =================
+
+    // 计算装填/拉弓时间
     private int getPullTime(ItemStack stack) {
+        // 1. 如果是弓，原版满蓄力固定为 20 ticks (1秒)
+        if (stack.getItem() instanceof BowItem) {
+            return 20; 
+        }
+        
+        // 2. 如果是弩，计算快速装填 (1.21.4 适配)
         try {
             var registry = mc.world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
             var quickChargeEntry = registry.getOrThrow(Enchantments.QUICK_CHARGE);
             int level = EnchantmentHelper.getLevel(quickChargeEntry, stack);
             return Math.max(0, 25 - 5 * level);
         } catch (Exception e) {
-            return 25;
+            return 25; // 获取附魔失败时回退到默认的 25 ticks
         }
     }
 }
