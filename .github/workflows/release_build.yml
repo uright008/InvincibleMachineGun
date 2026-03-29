@@ -1,12 +1,6 @@
-name: Publish Stable Build
+name: Publish Dev Build
 on: 
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'version (e.g., v1.0.0)'
-        required: true
-        default: 'v1.0.0'
-        type: string
 
 jobs:
   build:
@@ -37,11 +31,13 @@ jobs:
 
       - name: Build with Gradle
         run: ./gradlew build
-
+      
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: ${{ github.event.inputs.version }}
+          tag_name: snapshot
+          name: ${GITHUB_SHA:0:7}
+          prerelease: true
           files: |
             ./build/libs/*.jar
