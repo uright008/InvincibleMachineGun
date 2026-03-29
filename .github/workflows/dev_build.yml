@@ -1,5 +1,7 @@
 name: Publish Development Build
-on: push
+on: 
+  - push
+  - pull_request
 
 jobs:
   build:
@@ -28,7 +30,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: snapshot
-          name: Dev Build
+          name: ${GITHUB_SHA::7}
           prerelease: true
           files: |
             ./build/libs/*.jar
